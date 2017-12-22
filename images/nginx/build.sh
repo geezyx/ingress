@@ -31,6 +31,8 @@ export NGINX_OPENTRACING_VERSION=0.1.1
 export OPENTRACING_CPP_VERSION=1.0.0
 export ZIPKIN_CPP_VERSION=0.1.0
 export MODSECURITY=a2a5858d249222938c2f5e48087a922c63d7f9d8
+export LUA_NGINX_VERION=0.10.11
+export LUAJIT_VERSION=2.0.5
 
 export BUILD_PATH=/tmp/build
 
@@ -126,6 +128,12 @@ get_src 3d91e866819986f5dda00549694c4eaca16f1209d1f87aecc8aca3b42aa72e08 \
 get_src 3abdecedb5bf544eeba8c1ce0bef2da6a9f064b216ebbe20b68894afec1d7d80 \
         "https://github.com/SpiderLabs/ModSecurity-nginx/archive/$MODSECURITY.tar.gz"
 
+get_src c0fb91fcfd1c6e7dec34ca64826ef81ffebafdef6174d254467636f380566626 \
+        "https://github.com/openresty/lua-nginx-module/archive/v$LUA_NGINX_VERION.tar.gz"
+
+get_src 874b1f8297c697821f561f9b73b57ffd419ed8f4278c82e05b48806d30c1e979 \
+        "http://luajit.org/download/LuaJIT-$LUAJIT_VERSION.tar.gz"
+
 #https://blog.cloudflare.com/optimizing-tls-over-tcp-to-reduce-latency/
 curl -sSL -o nginx__dynamic_tls_records.patch https://raw.githubusercontent.com/cloudflare/sslconfig/master/patches/nginx__1.11.5_dynamic_tls_records.patch
 
@@ -149,7 +157,7 @@ cd "$BUILD_PATH"
 
 if [[ ${ARCH} != "s390x" ]]; then
  # Get Brotli source and deps
- git clone --depth=1 https://github.com/google/ngx_brotli.git 
+ git clone --depth=1 https://github.com/google/ngx_brotli.git
  cd ngx_brotli && git submodule update --init
 fi
 
@@ -168,6 +176,15 @@ if [[ ${ARCH} == "x86_64" ]]; then
   ./configure
   make
   make install
+fi
+
+if [[ ${ARCH} == "x86_64" ]]; then
+  # build luajit
+  cd "$BUILD_PATH/LuaJIT-$LUAJIT_VERSION"
+  make
+  make install
+  export LUAJIT_INC=/usr/local/include/luajit-2.0
+  export LUAJIT_LIB=/usr/local/lib
 fi
 
 # build nginx
@@ -198,7 +215,7 @@ if [[ ${ARCH} != "armv7l" || ${ARCH} != "aarch64" ]]; then
 fi
 
 CC_OPT='-g -O3 -flto -fPIE -fstack-protector-strong -Wformat -Werror=format-security -Wdate-time -D_FORTIFY_SOURCE=2 --param=ssp-buffer-size=4 -DTCP_FASTOPEN=23 -Wno-error=strict-aliasing -fPIC'
-LD_OPT='-Wl,-Bsymbolic-functions -fPIE -fPIC -pie -Wl,-z,relro -Wl,-z,now'
+LD_OPT='-Wl,-Bsymbolic-functions -fPIE -fPIC -pie -Wl,-z,relro -Wl,-z,now -Wl,-rpath,/usr/local/include/luajit-2.0'
 
 if [[ ${ARCH} == "x86_64" ]]; then
   CC_OPT+=' -m64 -mtune=generic'
@@ -211,6 +228,7 @@ WITH_MODULES="--add-module=$BUILD_PATH/ngx_devel_kit-$NDK_VERSION \
   --add-module=$BUILD_PATH/nginx-goodies-nginx-sticky-module-ng-$STICKY_SESSIONS_VERSION \
   --add-module=$BUILD_PATH/nginx-http-auth-digest-$NGINX_DIGEST_AUTH \
   --add-module=$BUILD_PATH/ngx_http_substitutions_filter_module-$NGINX_SUBSTITUTIONS \
+  --add-module=$BUILD_PATH/lua-nginx-module-$LUA_NGINX_VERION \
   --add-dynamic-module=$BUILD_PATH/nginx-opentracing-$NGINX_OPENTRACING_VERSION/opentracing \
   --add-dynamic-module=$BUILD_PATH/nginx-opentracing-$NGINX_OPENTRACING_VERSION/zipkin"
 
